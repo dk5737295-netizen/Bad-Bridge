@@ -1,0 +1,226 @@
+{
+  "name": "bad-bridge",
+  "displayName": "BAD Bridge",
+  "description": "VS Code ↔ Roblox Studio bridge for Build And Defend",
+  "version": "2.1.0",
+  "publisher": "davixx24",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "bad-bridge",
+          "title": "BAD Bridge",
+          "icon": "$(rocket)"
+        }
+      ]
+    },
+    "views": {
+      "bad-bridge": [
+        {
+          "type": "webview",
+          "id": "bad-bridge.panel",
+          "name": "Bridge Control"
+        },
+        {
+          "id": "bad-bridge.logs",
+          "name": "Studio Logs"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "bad-bridge.connect",
+        "title": "BAD Bridge: Connect"
+      },
+      {
+        "command": "bad-bridge.disconnect",
+        "title": "BAD Bridge: Disconnect"
+      },
+      {
+        "command": "bad-bridge.startServer",
+        "title": "BAD Bridge: Start Server"
+      },
+      {
+        "command": "bad-bridge.run",
+        "title": "BAD Bridge: Run Luau Code"
+      },
+      {
+        "command": "bad-bridge.runSelection",
+        "title": "BAD Bridge: Run Selected Code"
+      },
+      {
+        "command": "bad-bridge.tree",
+        "title": "BAD Bridge: Get Instance Tree"
+      },
+      {
+        "command": "bad-bridge.find",
+        "title": "BAD Bridge: Find Instances"
+      },
+      {
+        "command": "bad-bridge.undo",
+        "title": "BAD Bridge: Undo in Studio"
+      },
+      {
+        "command": "bad-bridge.redo",
+        "title": "BAD Bridge: Redo in Studio"
+      },
+      {
+        "command": "bad-bridge.refreshLogs",
+        "title": "BAD Bridge: Refresh Logs",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "bad-bridge.clearLogs",
+        "title": "BAD Bridge: Clear Logs",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "bad-bridge.clearQueue",
+        "title": "BAD Bridge: Clear Command Queue"
+      },
+      {
+        "command": "bad-bridge.insertModel",
+        "title": "BAD Bridge: Insert Marketplace Model"
+      },
+      {
+        "command": "bad-bridge.startPlay",
+        "title": "BAD Bridge: Start Play Mode"
+      },
+      {
+        "command": "bad-bridge.runServer",
+        "title": "BAD Bridge: Run Server Mode"
+      },
+      {
+        "command": "bad-bridge.stopPlay",
+        "title": "BAD Bridge: Stop Play/Server"
+      },
+      {
+        "command": "bad-bridge.runScriptInPlayMode",
+        "title": "BAD Bridge: Run Script in Play Mode"
+      },
+      {
+        "command": "bad-bridge.getStudioMode",
+        "title": "BAD Bridge: Get Studio Mode"
+      },
+      {
+        "command": "bad-bridge.getConsoleOutput",
+        "title": "BAD Bridge: Get Console Output"
+      },
+      {
+        "command": "bad-bridge.createInstance",
+        "title": "BAD Bridge: Create Instance"
+      },
+      {
+        "command": "bad-bridge.deleteInstance",
+        "title": "BAD Bridge: Delete Instance"
+      },
+      {
+        "command": "bad-bridge.cloneInstance",
+        "title": "BAD Bridge: Clone Instance"
+      },
+      {
+        "command": "bad-bridge.setProperty",
+        "title": "BAD Bridge: Set Property"
+      },
+      {
+        "command": "bad-bridge.moveInstance",
+        "title": "BAD Bridge: Move Instance"
+      },
+      {
+        "command": "bad-bridge.renameInstance",
+        "title": "BAD Bridge: Rename Instance"
+      },
+      {
+        "command": "bad-bridge.getSelection",
+        "title": "BAD Bridge: Get Selection"
+      },
+      {
+        "command": "bad-bridge.getScriptSource",
+        "title": "BAD Bridge: Get Script Source"
+      },
+      {
+        "command": "bad-bridge.setScriptSource",
+        "title": "BAD Bridge: Push Script Source to Studio"
+      },
+      {
+        "command": "bad-bridge.getAttributes",
+        "title": "BAD Bridge: Get Attributes"
+      },
+      {
+        "command": "bad-bridge.setAttribute",
+        "title": "BAD Bridge: Set Attribute"
+      },
+      {
+        "command": "bad-bridge.deleteAttribute",
+        "title": "BAD Bridge: Delete Attribute"
+      },
+      {
+        "command": "bad-bridge.getChildren",
+        "title": "BAD Bridge: Get Children"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "bad-bridge.refreshLogs",
+          "when": "view == bad-bridge.logs",
+          "group": "navigation"
+        },
+        {
+          "command": "bad-bridge.clearLogs",
+          "when": "view == bad-bridge.logs",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "bad-bridge.runSelection",
+          "when": "editorHasSelection",
+          "group": "bad-bridge"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "BAD Bridge",
+      "properties": {
+        "bad-bridge.port": {
+          "type": "number",
+          "default": 3001,
+          "description": "Port the bridge server listens on"
+        },
+        "bad-bridge.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect to the bridge server on startup"
+        },
+        "bad-bridge.logPollInterval": {
+          "type": "number",
+          "default": 3,
+          "description": "How often to poll for new Studio logs (seconds)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/vscode": "^1.109.0",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3"
+  }
+}
