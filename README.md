@@ -2,48 +2,75 @@
 
 **VS Code ↔ Roblox Studio bridge** — execute Luau code, inspect/manipulate instances, control play mode, and stream logs between VS Code and Roblox Studio in real time.
 
-## Components
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/davixx24.bad-bridge)](https://marketplace.visualstudio.com/items?itemName=davixx24.bad-bridge)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-| Component | Path | Description |
-|---|---|---|
-| **VS Code Extension** | `src/`, `dist/` | Sidebar UI, commands, log viewer |
-| **Bridge Server** | `bridge/server.js` | Node.js HTTP relay (port 3001) |
-| **MCP Server** | `bridge/mcp-bridge.cjs` | MCP tools for AI assistants (Copilot) |
-| **Studio Plugin** | `plugin/BridgePlugin.server.luau` | v5 — polls server, executes commands |
-| **Helpers** | `bridge/helpers.ps1` | PowerShell convenience functions |
+---
 
-## Quick Start
+## Features
 
-### 1. Install the VS Code Extension
+- **Run Luau code** directly from VS Code in edit or play mode
+- **Browse & search** the instance tree without leaving your editor
+- **Create, delete, clone, move, rename** instances remotely
+- **Set properties** with smart type support (Color3, Vector3, CFrame, UDim2, BrickColor)
+- **Read/write script source** between VS Code and Studio
+- **Control play mode** — start, stop, run server
+- **Stream Studio logs** to the VS Code sidebar in real time
+- **Undo/redo** support via ChangeHistoryService
+- **MCP server** for AI assistant integration (GitHub Copilot, etc.)
+- **Insert marketplace models** by asset ID
+
+## Installation
+
+### From the VS Code Marketplace
+
+1. Open VS Code
+2. Go to **Extensions** (`Ctrl+Shift+X`)
+3. Search for **BAD Bridge**
+4. Click **Install**
+
+### From VSIX
+
+1. Download the `.vsix` file from [Releases](https://github.com/dk5737295-netizen/Bad-Bridge/releases)
+2. `Ctrl+Shift+P` → **Extensions: Install from VSIX…** → select the file
+
+### From Source
 
 ```bash
-# From source
+git clone https://github.com/dk5737295-netizen/Bad-Bridge.git
+cd Bad-Bridge
 npm install
 npm run build
-npx @vscode/vsce package --no-dependencies --allow-missing-repository
-# Then: Ctrl+Shift+P → "Extensions: Install from VSIX…"
+npm run package
+# Then install the generated .vsix
 ```
 
-Or install the pre-built `.vsix` from [Releases](../../releases).
+## Setup
 
-### 2. Install the Studio Plugin
+### 1. Install the Studio Plugin
+
+Run the installer script to copy the plugin to your Roblox Studio plugins folder:
 
 ```powershell
 .\plugin\install-plugin.ps1
 ```
 
-This copies `BridgePlugin.server.luau` to your local Roblox Studio plugins folder.
+Or manually copy `plugin/BridgePlugin.server.luau` to:
+- **Windows:** `%LOCALAPPDATA%\Roblox\Plugins\`
+- **macOS:** `~/Library/Roblox/Plugins/`
 
-### 3. Studio Settings
+### 2. Studio Settings
 
-- **Game Settings → Security → Allow HTTP Requests** = ON
-- **Game Settings → Security → Allow Server Scripts To Use LoadString** = ON (for `run` command)
+In Roblox Studio, enable these under **Game Settings → Security**:
 
-### 4. Start the Bridge
+- **Allow HTTP Requests** = ✅ ON
+- **Allow Server Scripts To Use LoadString** = ✅ ON *(required for the `run` command)*
+
+### 3. Start the Bridge
 
 In VS Code: `Ctrl+Shift+P` → **BAD Bridge: Start Server**
 
-Or manually:
+Or start manually:
 
 ```bash
 node bridge/server.js --port 3001
@@ -51,9 +78,9 @@ node bridge/server.js --port 3001
 
 The Studio plugin auto-connects within ~2 seconds.
 
-## Available Commands
+## Commands
 
-### VS Code Command Palette (`Ctrl+Shift+P`)
+All commands are available via the Command Palette (`Ctrl+Shift+P`):
 
 | Command | Description |
 |---|---|
@@ -72,17 +99,20 @@ The Studio plugin auto-connects within ~2 seconds.
 | **Get Selection** | See selected instances in Studio |
 | **Start Play / Run Server / Stop** | Play mode control |
 | **Get Console Output** | Read Studio console |
-| **Get Studio Mode** | Check current mode |
 | **Undo / Redo** | ChangeHistoryService |
 | **Insert Model** | Search + insert marketplace model |
 
-### MCP Tools (for AI assistants)
+## Settings
 
-The MCP server (`bridge/mcp-bridge.cjs`) exposes all bridge functionality as native tools:
+| Setting | Default | Description |
+|---|---|---|
+| `bad-bridge.port` | `3001` | Port the bridge server listens on |
+| `bad-bridge.autoConnect` | `true` | Auto-connect on startup |
+| `bad-bridge.logPollInterval` | `3` | Log poll interval (seconds) |
 
-`bridge_status`, `bridge_run`, `bridge_tree`, `bridge_find`, `bridge_props`, `bridge_play`, `bridge_create`, `bridge_set_property`, `bridge_delete`, `bridge_move`, `bridge_rename`, `bridge_clone`, `bridge_script_source`, `bridge_set_script_source`, `bridge_console`, `bridge_logs`, `bridge_selection`, `bridge_play_control`, `bridge_undo`, `bridge_redo`, `bridge_batch`, `bridge_insert_model`, `bridge_get_attributes`, `bridge_set_attribute`, `bridge_delete_attribute`, `bridge_get_children`
+## MCP Server (AI Integration)
 
-### MCP Configuration
+The MCP server exposes all bridge functionality as tools for AI assistants like GitHub Copilot.
 
 Add to your VS Code `settings.json`:
 
@@ -100,11 +130,15 @@ Add to your VS Code `settings.json`:
 }
 ```
 
-## Smart Value Deserialization (v5)
+### Available MCP Tools
 
-`set_property` and `create_instance` now accept rich types as JSON:
+`bridge_status`, `bridge_run`, `bridge_tree`, `bridge_find`, `bridge_props`, `bridge_play`, `bridge_create`, `bridge_set_property`, `bridge_delete`, `bridge_move`, `bridge_rename`, `bridge_clone`, `bridge_script_source`, `bridge_set_script_source`, `bridge_console`, `bridge_logs`, `bridge_selection`, `bridge_play_control`, `bridge_undo`, `bridge_redo`, `bridge_batch`, `bridge_insert_model`, `bridge_get_attributes`, `bridge_set_attribute`, `bridge_delete_attribute`, `bridge_get_children`
 
-```json
+## Smart Value Types
+
+`set_property` and `create_instance` accept rich types as JSON:
+
+```jsonc
 // Color3 (RGB 0-255)
 {"r": 255, "g": 0, "b": 128}
 
@@ -131,13 +165,14 @@ VS Code Extension  ←→  Bridge Server (port 3001)  ←→  Studio Plugin
                         (stdio, for AI)
 ```
 
-## Version History
+## Contributing
 
-| Version | Changes |
-|---|---|
-| **Plugin v5 / Extension v2.1.0** | Smart value deserialization, attribute commands, CFrame rotation export, auto-reconnect with backoff, `get_children` command |
-| **Plugin v4 / Extension v2.0.0** | Instance manipulation, script editing, play mode control, MCP server, console output, marketplace insert |
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m 'Add my feature'`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a Pull Request
 
 ## License
 
-Private — for Build And Defend development.
+[MIT](LICENSE)

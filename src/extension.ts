@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
 import { BridgeClient } from "./bridge";
 import { BridgeWebviewProvider } from "./webview";
 import { LogTreeProvider } from "./logs";
@@ -17,6 +19,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
 
   client = new BridgeClient(port);
   const output = vscode.window.createOutputChannel("BAD Bridge");
+
+  // Auto-install Studio plugin on first activation / update
+  autoInstallStudioPlugin(ctx, output);
 
   // Status bar
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
@@ -68,13 +73,16 @@ export function activate(ctx: vscode.ExtensionContext): void {
     vscode.window.showInformationMessage("BAD Bridge: Disconnected.");
   });
 
+  reg("bad-bridge.installPlugin", () => {
+    installStudioPlugin(ctx.extensionPath, output, true);
+  });
+
   reg("bad-bridge.startServer", () => {
-    const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!ws) { return; }
+    const extDir = ctx.extensionPath;
     serverTerminal?.dispose();
-    serverTerminal = vscode.window.createTerminal({ name: "BAD Bridge Server", cwd: ws });
-    // Prefer Node.js server (cross-platform), fallback to PowerShell
-    const nodeScript = path.join(ws, "bridge", "server.js");
+    serverTerminal = vscode.window.createTerminal({ name: "BAD Bridge Server" });
+    // Use the server bundled with the extension — works in any workspace
+    const nodeScript = path.join(extDir, "bridge", "server.js");
     serverTerminal.sendText(`node "${nodeScript}" --port ${port}`);
     serverTerminal.show(true);
     // Auto-connect after a short delay
@@ -398,4 +406,85 @@ async function executeAndShow(
       output.show(true);
     }
   );
+}
+
+// ── Studio Plugin Auto-Installer ──
+
+function getStudioPluginsDir(): string | null {
+  const platform = os.platform();
+  if (platform === "win32") {
+    const local = process.env.LOCALAPPDATA;
+    if (!local) { return null; }
+    return path.join(local, "Roblox", "Plugins");
+  } else if (platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Roblox", "Plugins");
+  }
+  // Linux — Roblox doesn't officially support it, but try common path
+  return path.join(os.homedir(), ".local", "share", "Roblox", "Plugins");
+}
+
+function installStudioPlugin(
+  extensionPath: string,
+  output: vscode.OutputChannel,
+  showSuccess: boolean
+): boolean {
+  const src = path.join(extensionPath, "plugin", "BridgePlugin.server.luau");
+  const pluginsDir = getStudioPluginsDir();
+
+  if (!pluginsDir) {
+    vscode.window.showErrorMessage("BAD Bridge: Could not determine Roblox Studio plugins folder.");
+    return false;
+  }
+
+  try {
+    if (!fs.existsSync(pluginsDir)) {
+      fs.mkdirSync(pluginsDir, { recursive: true });
+    }
+
+    const dest = path.join(pluginsDir, "BAD_BridgePlugin.server.luau");
+    fs.copyFileSync(src, dest);
+
+    output.appendLine(`[BAD Bridge] Studio plugin installed to: ${dest}`);
+    if (showSuccess) {
+      vscode.window.showInformationMessage(
+        `BAD Bridge: Studio plugin installed!\n${dest}`,
+        "Open Plugins Folder"
+      ).then((choice) => {
+        if (choice === "Open Plugins Folder") {
+          vscode.env.openExternal(vscode.Uri.file(pluginsDir));
+        }
+      });
+    }
+    return true;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`BAD Bridge: Failed to install Studio plugin — ${msg}`);
+    output.appendLine(`[BAD Bridge] Plugin install error: ${msg}`);
+    return false;
+  }
+}
+
+function autoInstallStudioPlugin(
+  ctx: vscode.ExtensionContext,
+  output: vscode.OutputChannel
+): void {
+  const currentVersion = ctx.extension.packageJSON.version as string;
+  const installedVersion = ctx.globalState.get<string>("pluginInstalledVersion");
+
+  // Only auto-install if version changed or never installed
+  if (installedVersion === currentVersion) { return; }
+
+  const ok = installStudioPlugin(ctx.extensionPath, output, false);
+  if (ok) {
+    ctx.globalState.update("pluginInstalledVersion", currentVersion);
+    vscode.window.showInformationMessage(
+      `BAD Bridge: Studio plugin v${currentVersion} installed automatically. Restart Studio to use it.`,
+      "Open Plugins Folder"
+    ).then((choice) => {
+      if (choice === "Open Plugins Folder") {
+        const dir = getStudioPluginsDir();
+        if (dir) { vscode.env.openExternal(vscode.Uri.file(dir)); }
+      }
+    });
+  }
 }
