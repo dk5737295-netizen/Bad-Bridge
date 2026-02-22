@@ -170,7 +170,93 @@ npm run package      # create .vsix
 
 ---
 
-## 10. Testing
+## 10. Testing — Deep Verification (MANDATORY)
+
+When testing Roblox game features through the bridge, **never limit verification to console output alone**. Always inspect the actual game state to confirm things are working.
+
+### Testing Philosophy
+
+> **Don't just read the Output window — look at what's actually happening in the game.**
+
+Console output tells you what the code *says* it did. Deep verification tells you what *actually* happened.
+
+### Test Depth Levels
+
+| Level | What to Check | How |
+|---|---|---|
+| **1. Console** | Errors, warnings, print statements | `bridge_console` / `get_console_output` — use this as a **starting point only** |
+| **2. GUI / UI** | UI frames visible, correct text, correct values, buttons working | `bridge_play` → inspect `PlayerGui` descendants, check `.Visible`, `.Text`, `.Size`, child counts |
+| **3. Instance State** | Objects exist where expected, correct properties, correct hierarchy | `bridge_tree`, `bridge_find`, `bridge_props`, `bridge_get_children` |
+| **4. Data / Services** | Player data loaded, service state correct, configs parsed | `bridge_play` → `require()` services directly, read profile data, call service methods |
+| **5. Remotes** | Remote events/functions exist and respond | `bridge_find` for remotes, invoke server methods directly in test scripts |
+
+### Mandatory Test Checklist (for play-mode tests)
+
+When testing a game feature in play mode, **always do ALL of these**:
+
+1. **Wait for full load** — `task.wait(6-10)` after `PlayerAdded:Wait()` to let Bootstrap, ProfileService, and UI finish initializing.
+2. **Inspect the GUI** — Walk `PlayerGui:GetDescendants()` and check:
+   - Do the expected frames/buttons exist?
+   - Are they `.Visible`?
+   - Do `TextLabel.Text` values show correct data?
+   - Are scroll frames populated with children?
+3. **Inspect game state** — Check instances in Workspace, ServerStorage, ReplicatedStorage:
+   - Were expected objects created/destroyed?
+   - Are properties set to the right values?
+4. **Query services directly** — `require()` the relevant service and call its public methods:
+   - Does it return the expected data structure?
+   - Are counts/values correct?
+5. **Check profile data** — Load the player profile via `PlayerDataService:WaitForProfile()`:
+   - Are expected keys present?
+   - Are values the correct type and in valid ranges?
+6. **Report structured results** — Return a structured summary, not just "it works":
+   - List what was found, with counts and values
+   - Flag any mismatches between expected and actual state
+
+### Example: Deep Test of a Feature
+
+```luau
+-- BAD: Only checking console
+print("Feature loaded!")  -- This tells you nothing
+
+-- GOOD: Deep inspection
+local player = Players.PlayerAdded:Wait()
+task.wait(8)
+
+local out = {}
+
+-- Check GUI
+local gui = player.PlayerGui:FindFirstChild("GUI")
+local frame = gui and gui.Frames:FindFirstChild("FeatureFrame")
+table.insert(out, "Frame exists: " .. tostring(frame ~= nil))
+table.insert(out, "Frame visible: " .. tostring(frame and frame.Visible))
+
+-- Check children populated
+local list = frame and frame:FindFirstChild("ScrollList")
+local childCount = list and #list:GetChildren() or 0
+table.insert(out, "List items: " .. childCount)
+
+-- Check service state
+local FeatureService = require(SSS.Services.FeatureService)
+local state = FeatureService:GetState(player)
+table.insert(out, "Service state: " .. tostring(state))
+
+-- Check data
+local profile = PlayerDataService:WaitForProfile(player)
+table.insert(out, "Data key exists: " .. tostring(profile.Data.FeatureKey ~= nil))
+
+return table.concat(out, "\n")
+```
+
+### What NOT to Do
+
+- **DON'T** only check `print()` output and call it tested
+- **DON'T** assume a feature works because no errors appeared in console
+- **DON'T** skip UI inspection — the UI is what the player sees
+- **DON'T** return "it works" without evidence — return actual values, counts, and states
+- **DON'T** test in edit mode when the feature requires a player/play mode
+
+### Extension / Server Testing
 
 - Test extension commands manually via `Ctrl+Shift+P`
 - Test bridge server via `curl` or `Invoke-RestMethod`
