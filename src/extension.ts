@@ -77,6 +77,47 @@ export function activate(ctx: vscode.ExtensionContext): void {
     installStudioPlugin(ctx.extensionPath, output, true);
   });
 
+  reg("bad-bridge.exportPlugin", async () => {
+    const dest = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: "Export Plugin Here",
+      title: "Choose a folder to export the plugin to",
+    });
+    if (!dest || dest.length === 0) { return; }
+    const folder = dest[0].fsPath;
+    const pluginSrc = path.join(ctx.extensionPath, "plugin", "BridgePlugin.server.luau");
+    const pluginDest = path.join(folder, "BAD_BridgePlugin.server.luau");
+    try {
+      fs.copyFileSync(pluginSrc, pluginDest);
+      // Write a portable install script for the recipient
+      const installScript = [
+        `# BAD Bridge — Install Studio Plugin`,
+        `# Run this script on the target machine:  .\\install-plugin.ps1`,
+        ``,
+        `$pluginSrc = Join-Path $PSScriptRoot "BAD_BridgePlugin.server.luau"`,
+        `$pluginDir = Join-Path $env:LOCALAPPDATA "Roblox\\Plugins"`,
+        `if (-not (Test-Path $pluginDir)) { New-Item -ItemType Directory -Path $pluginDir | Out-Null }`,
+        `Copy-Item -Path $pluginSrc -Destination (Join-Path $pluginDir "BAD_BridgePlugin.server.luau") -Force`,
+        `Write-Host "Plugin installed! Restart Roblox Studio to use it." -ForegroundColor Green`,
+      ].join("\n");
+      fs.writeFileSync(path.join(folder, "install-plugin.ps1"), installScript, "utf-8");
+      output.appendLine(`[BAD Bridge] Plugin exported to: ${folder}`);
+      vscode.window.showInformationMessage(
+        `BAD Bridge: Plugin exported to ${folder}. Share the folder — the recipient runs install-plugin.ps1.`,
+        "Open Folder"
+      ).then((choice) => {
+        if (choice === "Open Folder") {
+          vscode.env.openExternal(vscode.Uri.file(folder));
+        }
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`BAD Bridge: Export failed — ${msg}`);
+    }
+  });
+
   reg("bad-bridge.startServer", () => {
     const extDir = ctx.extensionPath;
     serverTerminal?.dispose();

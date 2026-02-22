@@ -191,6 +191,10 @@
       {
         "command": "bad-bridge.installPlugin",
         "title": "BAD Bridge: Install Studio Plugin"
+      },
+      {
+        "command": "bad-bridge.exportPlugin",
+        "title": "BAD Bridge: Export Plugin for Someone Else"
       }
     ],
     "menus": {
