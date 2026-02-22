@@ -2,26 +2,10 @@
   "name": "bad-bridge",
   "displayName": "BAD Bridge",
   "description": "VS Code ↔ Roblox Studio bridge — execute Luau, inspect instances, control play mode, and stream logs in real time",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "publisher": "davixx24",
   "license": "MIT",
   "icon": "images/icon.png",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/dk5737295-netizen/Bad-Bridge"
-  },
-  "homepage": "https://github.com/dk5737295-netizen/Bad-Bridge#readme",
-  "bugs": {
-    "url": "https://github.com/dk5737295-netizen/Bad-Bridge/issues"
-  },
-  "keywords": [
-    "roblox",
-    "roblox-studio",
-    "luau",
-    "bridge",
-    "game-development",
-    "mcp"
-  ],
   "engines": {
     "vscode": "^1.109.0"
   },
@@ -103,6 +87,16 @@
         "command": "bad-bridge.clearLogs",
         "title": "BAD Bridge: Clear Logs",
         "icon": "$(trash)"
+      },
+      {
+        "command": "bad-bridge.filterLogs",
+        "title": "BAD Bridge: Filter Logs by Level",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "bad-bridge.searchLogs",
+        "title": "BAD Bridge: Search Logs",
+        "icon": "$(search)"
       },
       {
         "command": "bad-bridge.clearQueue",
@@ -195,6 +189,26 @@
       {
         "command": "bad-bridge.exportPlugin",
         "title": "BAD Bridge: Export Plugin for Someone Else"
+      },
+      {
+        "command": "bad-bridge.setupMCP",
+        "title": "BAD Bridge: Setup MCP (AI Tools)"
+      },
+      {
+        "command": "bad-bridge.diagnose",
+        "title": "BAD Bridge: Diagnose Setup"
+      },
+      {
+        "command": "bad-bridge.startMCP",
+        "title": "BAD Bridge: Start MCP Server"
+      },
+      {
+        "command": "bad-bridge.startAll",
+        "title": "BAD Bridge: Start All Servers"
+      },
+      {
+        "command": "bad-bridge.installDeps",
+        "title": "BAD Bridge: Install Dependencies"
       }
     ],
     "menus": {
@@ -206,6 +220,16 @@
         },
         {
           "command": "bad-bridge.clearLogs",
+          "when": "view == bad-bridge.logs",
+          "group": "navigation"
+        },
+        {
+          "command": "bad-bridge.filterLogs",
+          "when": "view == bad-bridge.logs",
+          "group": "navigation"
+        },
+        {
+          "command": "bad-bridge.searchLogs",
           "when": "view == bad-bridge.logs",
           "group": "navigation"
         }
@@ -235,16 +259,51 @@
           "type": "number",
           "default": 3,
           "description": "How often to poll for new Studio logs (seconds)"
+        },
+        "bad-bridge.autoInstallPlugin": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically install/update the Studio plugin when this extension activates"
+        },
+        "bad-bridge.autoStartServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the bridge server when VS Code opens this workspace"
+        },
+        "bad-bridge.rojoProjectFile": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Rojo project file (e.g. default.project.json). Leave empty to auto-detect in workspace root, or set to 'disabled' to skip Rojo entirely and use the Studio Plugin for DataModel info."
         }
       }
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
-    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "vscode:prepublish": "npm run build",
+    "build": "npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap && node scripts/install-plugin.js",
+    "watch": "npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "package": "npx @vscode/vsce package --no-dependencies",
-    "publish": "npx @vscode/vsce publish --no-dependencies"
+    "postinstall": "cd bridge && npm install",
+    "setup": "node scripts/setup.js",
+    "dev": "node scripts/dev.js",
+    "test": "node scripts/test.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dk5737295-netizen/Bad-Bridge"
+  },
+  "homepage": "https://github.com/dk5737295-netizen/Bad-Bridge#readme",
+  "bugs": {
+    "url": "https://github.com/dk5737295-netizen/Bad-Bridge/issues"
+  },
+  "keywords": [
+    "roblox",
+    "roblox-studio",
+    "luau",
+    "bridge",
+    "game-development",
+    "mcp"
+  ],
   "devDependencies": {
     "@types/node": "^25.3.0",
     "@types/vscode": "^1.109.0",

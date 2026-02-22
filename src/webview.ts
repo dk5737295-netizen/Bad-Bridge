@@ -92,6 +92,24 @@ export class BridgeWebviewProvider implements vscode.WebviewViewProvider {
         case "ping":
           await this.checkStatus();
           break;
+        case "startBridgeServer":
+          vscode.commands.executeCommand("bad-bridge.startServer");
+          this.postMessage({ type: "toast", text: "Bridge server starting..." });
+          break;
+        case "startMCPServer":
+          vscode.commands.executeCommand("bad-bridge.startMCP");
+          this.postMessage({ type: "toast", text: "MCP server starting..." });
+          break;
+        case "startAllServers":
+          vscode.commands.executeCommand("bad-bridge.startAll");
+          this.postMessage({ type: "toast", text: "All servers starting..." });
+          break;
+        case "gameMap":
+          await this.execSimple(this.client.sendCommand({ type: "game_map" }), "Game Map");
+          break;
+        case "scanScripts":
+          await this.execSimple(this.client.sendCommand({ type: "scan_scripts", sources: false }), "Scan Scripts");
+          break;
       }
     });
 
@@ -244,6 +262,16 @@ export class BridgeWebviewProvider implements vscode.WebviewViewProvider {
     <button class="sec" onclick="send({cmd:'ping'})" style="font-size:11px;">Refresh</button>
   </div>
 
+  <!-- Server Controls -->
+  <div class="section">
+    <div class="section-title">Servers</div>
+    <div class="btn-row">
+      <button onclick="send({cmd:'startBridgeServer'})" title="Start the HTTP bridge relay server">Bridge Server</button>
+      <button onclick="send({cmd:'startMCPServer'})" title="Start the MCP server for AI tools">MCP Server</button>
+      <button onclick="send({cmd:'startAllServers'})" style="background:#4ec760;color:#000;" title="Start both Bridge and MCP servers">&#9654; Start All</button>
+    </div>
+  </div>
+
   <!-- Run Code -->
   <div class="section">
     <div class="section-title">Run Luau</div>
@@ -263,6 +291,7 @@ export class BridgeWebviewProvider implements vscode.WebviewViewProvider {
     <div class="btn-row">
       <button onclick="doTree(false)">Tree</button>
       <button class="sec" onclick="doTree(true)">Tree + Props</button>
+      <button class="sec" onclick="send({cmd:'gameMap'})" title="High-level game structure overview">Game Map</button>
     </div>
   </div>
 
@@ -367,6 +396,7 @@ export class BridgeWebviewProvider implements vscode.WebviewViewProvider {
     </div>
     <div class="btn-row">
       <button onclick="doGetScript()">Read Source</button>
+      <button class="sec" onclick="send({cmd:'scanScripts'})" title="List all scripts in the game">Scan Scripts</button>
     </div>
   </div>
 

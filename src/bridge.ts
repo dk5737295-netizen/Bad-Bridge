@@ -29,28 +29,6 @@ export class BridgeClient {
     this.port = port;
   }
 
-  private request(method: string, path: string, body?: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const opts: http.RequestOptions = {
-        hostname: "127.0.0.1",
-        port: this.port,
-        path,
-        method,
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        timeout: 5000,
-      };
-      const req = http.request(opts, (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => resolve(data));
-      });
-      req.on("error", reject);
-      req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
-      if (body) { req.write(body); }
-      req.end();
-    });
-  }
-
   async ping(): Promise<boolean> {
     try {
       const raw = await this.request("GET", "/ping");
@@ -62,29 +40,50 @@ export class BridgeClient {
   }
 
   async sendCommand(cmd: BridgeCommand, timeoutMs?: number): Promise<BridgeResult | null> {
-    // Clear any stale result first
-    try { await this.request("GET", "/result"); } catch { /* ignore */ }
-
     // Long-running commands get a longer timeout
     const longCommands = ["run_script_in_play_mode", "start_stop_play", "insert_model"];
     const defaultTimeout = longCommands.includes(cmd.type) ? 120000 : 15000;
+    const timeout = timeoutMs ?? defaultTimeout;
 
-    await this.request("POST", "/command", JSON.stringify(cmd));
-    return this.waitForResult(timeoutMs ?? defaultTimeout);
+    // Use /run endpoint: atomically queues command + long-polls for result
+    // This eliminates the race condition of separate POST /command + GET /result polling
+    try {
+      const raw = await this.request(
+        "POST",
+        `/run?timeout=${timeout}`,
+        JSON.stringify(cmd),
+        timeout + 5000 // HTTP socket timeout slightly longer than server-side timeout
+      );
+      if (raw && raw !== "null") {
+        return JSON.parse(raw) as BridgeResult;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
-  private async waitForResult(timeoutMs: number = 15000): Promise<BridgeResult | null> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      await sleep(500);
-      try {
-        const raw = await this.request("GET", "/result");
-        if (raw && raw !== "null") {
-          return JSON.parse(raw) as BridgeResult;
-        }
-      } catch { /* retry */ }
-    }
-    return null;
+  private request(method: string, path: string, body?: string, timeoutMs?: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const opts: http.RequestOptions = {
+        hostname: "127.0.0.1",
+        port: this.port,
+        path,
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        // Default 10s for quick requests; /run callers pass their own longer timeout
+        timeout: timeoutMs ?? 10000,
+      };
+      const req = http.request(opts, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => resolve(data));
+      });
+      req.on("error", reject);
+      req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
+      if (body) { req.write(body); }
+      req.end();
+    });
   }
 
   async getQueueDepth(): Promise<number> {
@@ -240,8 +239,4 @@ export class BridgeClient {
       return null;
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

@@ -4,6 +4,7 @@
 // Usage: node server.js [--port 3001]
 
 const http = require("http");
+const zlib = require("zlib");
 
 const args = process.argv.slice(2);
 let PORT = 3001;
@@ -20,31 +21,66 @@ let result = null;         // Latest result from Studio
 let logs = [];             // Log buffer
 let cmdIndex = 0;          // Command counter
 const MAX_LOGS = 2000;
+const MAX_BODY_SIZE = 5 * 1024 * 1024; // 5 MB
 const VERSION = 4;
+let lastStudioPoll = 0; // timestamp of last Studio /poll request
 
 // Long-poll waiters for result
 let resultWaiters = [];    // Array of { resolve, timer } for pending long-poll requests
+
+// Character control state
+let controlInputQueue = [];   // FIFO queue of control inputs from agent
+let controlState = null;      // Last known character state from play mode
+let controlActive = false;    // Whether a control session is active
+let controlWaiters = [];      // Long-poll waiters for control inputs
+const MAX_CONTROL_QUEUE = 50;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (chunk) => (data += chunk));
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      data += chunk;
+    });
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
 }
 
-function sendJSON(res, code, obj) {
+function sendJSON(res, code, obj, req) {
   const body = typeof obj === "string" ? obj : JSON.stringify(obj);
-  res.writeHead(code, {
+  const headers = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  });
-  res.end(body);
+    "Access-Control-Allow-Headers": "Content-Type, Accept-Encoding",
+  };
+  // Gzip responses > 4KB when client accepts it
+  const acceptGzip = req && req.headers && (req.headers["accept-encoding"] || "").includes("gzip");
+  if (acceptGzip && body.length > 4096) {
+    zlib.gzip(body, (err, compressed) => {
+      if (err) {
+        res.writeHead(code, headers);
+        res.end(body);
+      } else {
+        headers["Content-Encoding"] = "gzip";
+        headers["Content-Length"] = compressed.length;
+        res.writeHead(code, headers);
+        res.end(compressed);
+      }
+    });
+  } else {
+    res.writeHead(code, headers);
+    res.end(body);
+  }
 }
 
 function parseQuery(url) {
@@ -84,6 +120,7 @@ const server = http.createServer(async (req, res) => {
   try {
     // ── GET /poll — Studio plugin takes oldest queued command ──
     if (method === "GET" && path === "/poll") {
+      lastStudioPoll = Date.now();
       if (queue.length > 0) {
         const cmd = queue.shift();
         sendJSON(res, 200, cmd);
@@ -117,7 +154,7 @@ const server = http.createServer(async (req, res) => {
       if (result !== null) {
         const r = result;
         result = null;
-        sendJSON(res, 200, r);
+        sendJSON(res, 200, r, req);
       } else {
         sendJSON(res, 200, "null");
       }
@@ -134,7 +171,7 @@ const server = http.createServer(async (req, res) => {
       } else {
         // Hold connection open until result arrives or timeout
         const waiter = {};
-        waiter.resolve = (r) => { sendJSON(res, 200, r); };
+        waiter.resolve = (r) => { sendJSON(res, 200, r, req); };
         waiter.timer = setTimeout(() => {
           resultWaiters = resultWaiters.filter(w => w !== waiter);
           sendJSON(res, 200, { success: false, error: "timeout", waited: timeoutMs });
@@ -168,20 +205,14 @@ const server = http.createServer(async (req, res) => {
       const type = parsed?.type || "?";
       console.log(`\x1b[33m[${timestamp()}] Command #${cmdIndex} queued+wait: ${type} (timeout ${timeoutMs}ms)\x1b[0m`);
 
-      // If result already available (unlikely), return immediately
-      if (result !== null) {
-        const r = result;
-        result = null;
-        sendJSON(res, 200, r);
-      } else {
-        const waiter = {};
-        waiter.resolve = (r) => { sendJSON(res, 200, r); };
-        waiter.timer = setTimeout(() => {
-          resultWaiters = resultWaiters.filter(w => w !== waiter);
-          sendJSON(res, 200, { success: false, error: "timeout", waited: timeoutMs });
-        }, timeoutMs);
-        resultWaiters.push(waiter);
-      }
+      // Wait for result via long-poll
+      const waiter = {};
+      waiter.resolve = (r) => { sendJSON(res, 200, r, req); };
+      waiter.timer = setTimeout(() => {
+        resultWaiters = resultWaiters.filter(w => w !== waiter);
+        sendJSON(res, 200, { success: false, error: "timeout", waited: timeoutMs });
+      }, timeoutMs);
+      resultWaiters.push(waiter);
     }
 
     // ── GET /queue — Check queue depth ──
@@ -223,7 +254,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── GET /logs — Read buffered logs ──
     else if (method === "GET" && path === "/logs") {
-      sendJSON(res, 200, logs);
+      sendJSON(res, 200, logs, req);
       if (qs.clear === "true") {
         logs = [];
       }
@@ -238,6 +269,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── GET /status — Full server status ──
     else if (method === "GET" && path === "/status") {
+      const studioConnected = lastStudioPoll > 0 && (Date.now() - lastStudioPoll) < 15000;
       sendJSON(res, 200, {
         ok: true,
         version: VERSION,
@@ -245,7 +277,81 @@ const server = http.createServer(async (req, res) => {
         logs: logs.length,
         commands: cmdIndex,
         hasResult: result !== null,
+        studioConnected,
+        lastStudioPoll: lastStudioPoll || null,
       });
+    }
+
+    // ── POST /control/input — Agent pushes a control command for the character ──
+    else if (method === "POST" && path === "/control/input") {
+      const body = await readBody(req) || "";
+      try {
+        const input = JSON.parse(body);
+        if (controlInputQueue.length < MAX_CONTROL_QUEUE) {
+          controlInputQueue.push(input);
+        }
+        // Resolve any waiting pollers
+        if (controlWaiters.length > 0 && controlInputQueue.length > 0) {
+          const cmd = controlInputQueue.shift();
+          const waiter = controlWaiters.shift();
+          clearTimeout(waiter.timer);
+          waiter.resolve(cmd);
+        }
+        sendJSON(res, 200, { ok: true, queued: controlInputQueue.length });
+      } catch (_e) {
+        sendJSON(res, 400, { error: "Invalid JSON" });
+      }
+    }
+
+    // ── GET /control/poll — Play mode script polls for next control input ──
+    else if (method === "GET" && path === "/control/poll") {
+      if (controlInputQueue.length > 0) {
+        const cmd = controlInputQueue.shift();
+        sendJSON(res, 200, cmd);
+      } else {
+        // Long-poll: wait up to 2s for an input
+        const pollTimeout = parseInt(qs.timeout) || 2000;
+        const waiter = {};
+        waiter.resolve = (data) => { sendJSON(res, 200, data); };
+        waiter.timer = setTimeout(() => {
+          controlWaiters = controlWaiters.filter(w => w !== waiter);
+          sendJSON(res, 200, "null");
+        }, pollTimeout);
+        controlWaiters.push(waiter);
+      }
+    }
+
+    // ── POST /control/state — Play mode script pushes character state ──
+    else if (method === "POST" && path === "/control/state") {
+      const body = await readBody(req) || "";
+      try {
+        controlState = JSON.parse(body);
+        controlState._timestamp = Date.now();
+        controlActive = true;
+        sendJSON(res, 200, { ok: true });
+      } catch (_e) {
+        sendJSON(res, 400, { error: "Invalid JSON" });
+      }
+    }
+
+    // ── GET /control/state — Agent reads current character state ──
+    else if (method === "GET" && path === "/control/state") {
+      if (controlState) {
+        sendJSON(res, 200, controlState, req);
+      } else {
+        sendJSON(res, 200, { active: false, error: "No control session active" });
+      }
+    }
+
+    // ── DELETE /control — Clear control session ──
+    else if (method === "DELETE" && path === "/control") {
+      controlInputQueue = [];
+      controlState = null;
+      controlActive = false;
+      for (const w of controlWaiters) { clearTimeout(w.timer); w.resolve("null"); }
+      controlWaiters = [];
+      sendJSON(res, 200, { ok: true, cleared: true });
+      console.log(`\x1b[35m[${timestamp()}] Control session cleared\x1b[0m`);
     }
 
     // ── 404 ──

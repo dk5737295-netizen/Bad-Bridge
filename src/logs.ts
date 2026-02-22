@@ -8,9 +8,23 @@ export class LogTreeProvider implements vscode.TreeDataProvider<LogItem> {
   private logs: LogEntry[] = [];
   private client: BridgeClient;
   private timer: ReturnType<typeof setInterval> | undefined;
+  private _filter: string = "all"; // "all" | "errors" | "warnings" | "output"
+  private _searchTerm: string = "";
 
   constructor(client: BridgeClient) {
     this.client = client;
+  }
+
+  get filter(): string { return this._filter; }
+
+  setFilter(filter: string): void {
+    this._filter = filter;
+    this._onDidChange.fire();
+  }
+
+  setSearchTerm(term: string): void {
+    this._searchTerm = term.toLowerCase();
+    this._onDidChange.fire();
   }
 
   startPolling(intervalSec: number): void {
@@ -41,12 +55,26 @@ export class LogTreeProvider implements vscode.TreeDataProvider<LogItem> {
   }
 
   getChildren(): LogItem[] {
-    // Show newest first
-    return this.logs
-      .slice()
-      .reverse()
-      .slice(0, 200)
-      .map((entry) => new LogItem(entry));
+    let filtered = this.logs.slice().reverse();
+
+    // Apply level filter
+    if (this._filter === "errors") {
+      filtered = filtered.filter(e => (e.type ?? "Output") === "Error");
+    } else if (this._filter === "warnings") {
+      filtered = filtered.filter(e => {
+        const t = e.type ?? "Output";
+        return t === "Warning" || t === "Error";
+      });
+    } else if (this._filter === "output") {
+      filtered = filtered.filter(e => (e.type ?? "Output") === "Output");
+    }
+
+    // Apply search filter
+    if (this._searchTerm) {
+      filtered = filtered.filter(e => (e.message ?? "").toLowerCase().includes(this._searchTerm));
+    }
+
+    return filtered.slice(0, 200).map((entry) => new LogItem(entry));
   }
 
   dispose(): void {

@@ -93,15 +93,14 @@ function Bridge-Stop {
 }
 
 function Bridge-Logs {
-    <# Get recent logs. #>
+    <# Get recent logs from the bridge server. #>
     param([int]$Count = 50, [string]$Filter)
-    $body = @{ type = "get_logs"; count = $Count; clear = $false }
-    if ($Filter) { $body.filter = $Filter }
-    $json = $body | ConvertTo-Json -Compress -Depth 5
-    $r = Invoke-RestMethod -Uri "$script:BRIDGE/run?timeout=10000" -Method Post -Body $json -ContentType "application/json" -TimeoutSec 15
-    if ($r.success) {
-        try { $r.result | ConvertFrom-Json -Depth 10 | Format-Table type, message -AutoSize -Wrap } catch { $r.result }
-    } else { Write-Warning $r.error }
+    $uri = "$script:BRIDGE/logs?count=$Count"
+    if ($Filter) { $uri += "&filter=$Filter" }
+    $r = Invoke-RestMethod -Uri $uri -Method Get -TimeoutSec 10
+    if ($r) {
+        try { $r | Format-Table type, message -AutoSize -Wrap } catch { $r }
+    } else { Write-Host "(no logs)" }
 }
 
 Write-Host "[Bridge Helpers] Loaded. Commands: Bridge-Ping, Bridge-Run, Bridge-Tree, Bridge-Find, Bridge-Props, Bridge-Play, Bridge-Console, Bridge-Stop, Bridge-Logs" -ForegroundColor Green
